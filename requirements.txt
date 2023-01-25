@@ -1,0 +1,7 @@
+loguru
+validators
+tqdm
+git+https://github.com/pishiko/pytube.git@42a7d8322dd7749a9e950baf6860d115bbeaedfc
+librosa
+moviepy
+pydub
