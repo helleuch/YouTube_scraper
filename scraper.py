@@ -81,10 +81,10 @@ def scrape_channel(url: str) -> str:
     channel = Channel(url)
     logger.info(f"Scraping channel {channel.channel_name}")
 
-    output_path = os.path.join("downloads",f"scraped_{channel.channel_name}".replace(" ", "_").strip())
+    output_path = os.path.join("downloads", f"scraped_{channel.channel_name}".replace(" ", "_").strip())
     pathlib.Path(output_path).mkdir(parents=True, exist_ok=True)
-
-    with open(f"downloaded_{output_path}.log", 'w') as log:
+    log_file = channel.channel_name.replace(" ", "_").strip()+".log"
+    with open(log_file, 'w') as log:
         for video in (pbar := tqdm(channel.videos)):
             pbar.set_description(f"Downloading {video.video_id}")
             video.streams.first().download(output_path=output_path)
