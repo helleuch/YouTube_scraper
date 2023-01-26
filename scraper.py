@@ -1,16 +1,16 @@
 import argparse
+import datetime
 import os
 import pathlib
 from typing import Tuple
 
 import librosa
 import moviepy.editor as mp
+import pytube as pt
 import validators
 from loguru import logger
 from pydub import AudioSegment
-from pytube import Channel
 from tqdm import tqdm
-from tqdm.notebook import tqdm
 
 
 def export_audio(source_folder: str, destination_folder: str, export_wav: bool = True) -> Tuple[str, str]:
@@ -32,19 +32,27 @@ def export_audio(source_folder: str, destination_folder: str, export_wav: bool =
 
     logger.info(f"Exporting audio from {source_folder} to {destination_folder}...")
 
-    for file in (pbar := tqdm(os.listdir(source_folder))):
+    files = [file for file in os.listdir(source_folder) if ".mp4" in file]
+
+    for file in (pbar := tqdm(files)):
         base_file_name = file.split(".mp4")[0]
 
         mp3_file_name = os.path.join(mp3_path, f"{base_file_name}.mp3")
         pbar.set_description(f"File: {file} || Exporting mp3")
-        mp.VideoFileClip(os.path.join(source_folder, file)).audio.write_audiofile(mp3_file_name, verbose=False,
+        try:
+            mp.VideoFileClip(os.path.join(source_folder, file)).audio.write_audiofile(mp3_file_name, verbose=False,
                                                                                   logger=None)
-
+        except OSError as e:
+            logger.error(f"Could not export mp3 file: {e}")
+            
         if export_wav:
             wav_file_name = os.path.join(wav_path, f"{base_file_name}.wav")
             pbar.set_description(f"File: {file} || Exporting wav")
-            AudioSegment.from_mp3(mp3_file_name).export(wav_file_name, format="wav")
-
+            try:
+                AudioSegment.from_mp3(mp3_file_name).export(wav_file_name, format="wav")
+            except pt.CouldntEncodeError as e :
+                logger.error(f"Could not export wav file: {e}")
+                
     logger.success("Audio export completed.")
     return mp3_path, wav_path
 
@@ -78,16 +86,17 @@ def scrape_channel(url: str) -> str:
     :param url: URL of the YouTube channel.
     :return: Directory in which the videos were saved.
     """
-    channel = Channel(url)
+    channel = pt.Channel(url)
     logger.info(f"Scraping channel {channel.channel_name}")
 
     output_path = os.path.join("downloads", f"scraped_{channel.channel_name}".replace(" ", "_").strip())
     pathlib.Path(output_path).mkdir(parents=True, exist_ok=True)
-    log_file = channel.channel_name.replace(" ", "_").strip()+".log"
-    with open(log_file, 'w') as log:
-        for video in (pbar := tqdm(channel.videos)):
-            pbar.set_description(f"Downloading {video.video_id}")
-            video.streams.first().download(output_path=output_path)
+    log_file = channel.channel_name.replace(" ", "_").strip() + f"_{datetime.datetime.now()}.log"
+
+    for video in (pbar := tqdm(channel.videos)):
+        pbar.set_description(f"Downloading {video.video_id}")
+        video.streams.filter(file_extension='mp4').first().download(output_path=output_path)
+        with open(log_file, 'a') as log:
             log.write(video.watch_url + "\n")
 
     logger.success("Video download completed.")
@@ -122,14 +131,14 @@ def get_channel_from_file(file_path: str) -> str:
             raise ValueError("The specified URL is invalid")
 
 
-def main(arguments: dict):
+def main(arguments: argparse.Namespace):
     logger.info(f"Launching scraper with parameters: {arguments}")
     logger.warning(
         "This script requires a modification of the pytube library source code to account for the new channel links with the \"@\" symbol. ")
 
     if arguments.file:
-        file = parse_str_arg(arguments.path, "link.txt")
-        url = get_channel_from_file(file)
+        link_file = parse_str_arg(arguments.path, "link.txt")
+        url = get_channel_from_file(link_file)
 
     elif arguments.channel is not None and validators.url(arguments.channel):
         url = arguments.channel
